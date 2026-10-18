@@ -50,10 +50,22 @@ def init_db(db_path: Optional[str] = None) -> None:
             scenario_id TEXT NOT NULL,
             cell TEXT NOT NULL,
             difficulty_index REAL NOT NULL,
+            scenario_json TEXT,
+            overall_score REAL,
             started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(trainee_id) REFERENCES trainees(id)
         );
     """)
+
+    # Alter table if schema was created previously without scenario_json or overall_score
+    try:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN scenario_json TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN overall_score REAL;")
+    except sqlite3.OperationalError:
+        pass
 
     # 3. Events table
     cursor.execute("""
@@ -110,20 +122,60 @@ def record_session(
     scenario_id: str,
     cell: Any,
     difficulty_index: float,
+    scenario_json: Optional[Any] = None,
     db_path: Optional[str] = None,
 ) -> None:
-    """Record a newly started training session."""
+    """Record a newly started training session, saving the scenario JSON for reloading."""
     cell_str = json.dumps(list(cell)) if not isinstance(cell, str) else cell
+    scenario_payload = (
+        json.dumps(scenario_json)
+        if scenario_json is not None and not isinstance(scenario_json, str)
+        else scenario_json
+    )
     record_trainee(trainee_id, db_path=db_path)
 
     conn = get_connection(db_path)
     cursor = conn.cursor()
     cursor.execute(
         """
-        INSERT INTO sessions (session_id, trainee_id, scenario_id, cell, difficulty_index)
-        VALUES (?, ?, ?, ?, ?);
+        INSERT INTO sessions (session_id, trainee_id, scenario_id, cell, difficulty_index, scenario_json)
+        VALUES (?, ?, ?, ?, ?, ?);
         """,
-        (session_id, trainee_id, scenario_id, cell_str, float(difficulty_index)),
+        (session_id, trainee_id, scenario_id, cell_str, float(difficulty_index), scenario_payload),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_session(session_id: str, db_path: Optional[str] = None) -> Optional[dict]:
+    """Retrieve session details by session_id."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM sessions WHERE session_id = ?;", (session_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    data = dict(row)
+    if data.get("scenario_json"):
+        try:
+            data["scenario"] = json.loads(data["scenario_json"])
+        except Exception:
+            data["scenario"] = None
+    return data
+
+
+def update_session_score(
+    session_id: str,
+    overall_score: float,
+    db_path: Optional[str] = None,
+) -> None:
+    """Update overall score on an existing session."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE sessions SET overall_score = ? WHERE session_id = ?;",
+        (float(overall_score), session_id),
     )
     conn.commit()
     conn.close()

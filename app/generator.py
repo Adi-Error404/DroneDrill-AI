@@ -252,6 +252,10 @@ def _build_scenario_for_cell(cell: Tuple[str, ...], rng: random.Random) -> Dict[
             }
         )
 
+    # Distractor items mapping to noise windows
+    distractor_items = {"none": 0, "birds": 2, "clutter": 4}.get(distractors, 0)
+    noise_windows = 3 + distractor_items
+
     duration_s = float(rng.choice([45.0, 60.0, 90.0, 120.0]))
     difficulty_index = _calculate_difficulty(factors)
     fingerprint = _compute_fingerprint(factors, objects)
@@ -265,6 +269,7 @@ def _build_scenario_for_cell(cell: Tuple[str, ...], rng: random.Random) -> Dict[
         "factors": factors,
         "objects": objects,
         "duration_s": duration_s,
+        "noise_windows": noise_windows,
         "difficulty_index": difficulty_index,
         "fingerprint": fingerprint,
     }
