@@ -1044,6 +1044,9 @@
     safeAddListener('btn-open-scenarios', 'click', openScenariosLibrary);
     safeAddListener('btn-end-session', 'click', endSession);
 
+    // Fullscreen Controller
+    initFullscreen();
+
     // Sidebar Navigation
     safeAddListener('nav-btn-training', 'click', () => closeModals());
     safeAddListener('nav-btn-scenarios', 'click', openScenariosLibrary);
@@ -1139,14 +1142,17 @@
       });
     }
 
-    // Stacked Feed Clicks to Switch Primary View
+    // Stacked / PIP Feed Clicks: click tile to swap into main view; click again to restore base scenario sensor
     ['eo', 'thermal', 'radar'].forEach(mode => {
       const card = document.getElementById(`feed-card-${mode}`);
       if (card) {
         card.addEventListener('click', () => {
           const m = card.dataset.mode;
-          if (canvasRenderer) canvasRenderer.setSensorMode(m);
-          updateFeedActiveState(m);
+          const currentMode = canvasRenderer ? canvasRenderer.activeSensorMode : 'EO';
+          const defaultSensor = (state.factors && state.factors.sensor) || 'EO';
+          const targetMode = (currentMode && currentMode.toLowerCase() === m.toLowerCase()) ? defaultSensor : m;
+          if (canvasRenderer) canvasRenderer.setSensorMode(targetMode);
+          updateFeedActiveState(targetMode);
         });
       }
     });
@@ -1163,6 +1169,95 @@
     safeAddListener('btn-modal-next', 'click', () => {
       closeModals();
       startAdaptiveSession();
+    });
+  }
+
+  // --- Fullscreen Manager (Supports Fullscreen API and CSS Fallback) ---
+  function initFullscreen() {
+    const root = document.getElementById('simulator-root');
+    const toggleBtn = document.getElementById('btn-toggle-fullscreen');
+    const iconEnter = document.getElementById('icon-fs-enter');
+    const iconExit = document.getElementById('icon-fs-exit');
+    const labelFs = document.getElementById('label-fullscreen');
+
+    function isFullscreenActive() {
+      return !!(document.fullscreenElement || (root && root.classList.contains('sim-fullscreen')));
+    }
+
+    function updateFullscreenUI(active) {
+      if (root) {
+        root.classList.toggle('sim-fullscreen', active);
+      }
+      if (iconEnter) iconEnter.style.display = active ? 'none' : 'block';
+      if (iconExit) iconExit.style.display = active ? 'block' : 'none';
+      if (labelFs) labelFs.textContent = active ? 'Exit (Esc)' : 'Fullscreen (F)';
+      if (toggleBtn) {
+        toggleBtn.title = active ? 'Exit Fullscreen (Esc or F)' : 'Enter Fullscreen (F)';
+        toggleBtn.classList.toggle('active', active);
+      }
+
+      // Resize canvas to fill new viewport geometry without losing session
+      setTimeout(() => {
+        if (canvasRenderer && typeof canvasRenderer.resize === 'function') {
+          canvasRenderer.resize();
+        }
+      }, 60);
+    }
+
+    async function toggleFullscreen() {
+      if (!root) return;
+      if (!isFullscreenActive()) {
+        try {
+          if (root.requestFullscreen) {
+            await root.requestFullscreen();
+          } else if (root.webkitRequestFullscreen) {
+            await root.webkitRequestFullscreen();
+          } else {
+            updateFullscreenUI(true);
+          }
+        } catch (err) {
+          console.warn('Fullscreen API error, using CSS fallback:', err);
+          updateFullscreenUI(true);
+        }
+      } else {
+        try {
+          if (document.fullscreenElement && document.exitFullscreen) {
+            await document.exitFullscreen();
+          } else {
+            updateFullscreenUI(false);
+          }
+        } catch (err) {
+          updateFullscreenUI(false);
+        }
+      }
+    }
+
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', toggleFullscreen);
+    }
+
+    // Keyboard shortcuts: F key toggles fullscreen; Esc exits
+    document.addEventListener('keydown', (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT')) {
+        return;
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (e.key === 'Escape' && isFullscreenActive()) {
+        if (!document.fullscreenElement) {
+          updateFullscreenUI(false);
+        }
+      }
+    });
+
+    document.addEventListener('fullscreenchange', () => {
+      const active = (document.fullscreenElement === root);
+      updateFullscreenUI(active);
+    });
+    document.addEventListener('webkitfullscreenchange', () => {
+      const active = (document.webkitFullscreenElement === root);
+      updateFullscreenUI(active);
     });
   }
 

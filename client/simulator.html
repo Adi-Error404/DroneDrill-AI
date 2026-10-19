@@ -8,69 +8,77 @@
 </head>
 <body>
 
-  <!-- Offline/Error Banner -->
-  <div id="api-banner" class="api-banner">
-    <span>API Server Offline (http://127.0.0.1:8000). Ensure the DroneDrill AI service is running.</span>
-    <button id="btn-api-retry" class="btn-api-retry">RETRY</button>
-  </div>
+  <!-- Simulator App Root (Can enter Fullscreen via Fullscreen API or CSS fallback) -->
+  <div id="simulator-root" class="simulator-app-root">
 
-  <!-- Top Navigation Bar -->
-  <header class="top-bar">
-    <div class="brand-section">
-      <div class="brand-logo-sq">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-      </div>
-      <div class="brand-text-col">
-        <div class="brand-title-row">
-          <h1 class="brand-title">DRONEDRILL AI</h1>
-          <span class="brand-badge">SIMULATOR</span>
-        </div>
-        <span class="brand-subtitle">DRONE-THREAT RECOGNITION TRAINER - ADAPTIVE SCENARIO SUITE</span>
-      </div>
+    <!-- Offline/Error Banner -->
+    <div id="api-banner" class="api-banner">
+      <span>API Server Offline (http://127.0.0.1:8000). Ensure the DroneDrill AI service is running.</span>
+      <button id="btn-api-retry" class="btn-api-retry">RETRY</button>
     </div>
 
-    <!-- Active Scenario Condition Chips (Caption above, coloured pill below) -->
-    <div class="condition-chips" id="condition-chips">
-      <div class="condition-chip-item">
-        <span class="chip-caption">STATUS</span>
-        <div class="chip pill-green" id="chip-system-ready">
-          <span class="chip-dot"></span><span>SYSTEM READY</span>
+    <!-- Top Navigation Bar / Fullscreen HUD -->
+    <header class="top-bar">
+      <div class="brand-section">
+        <div class="brand-logo-sq">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        </div>
+        <div class="brand-text-col">
+          <div class="brand-title-row">
+            <h1 class="brand-title">DRONEDRILL AI</h1>
+            <span class="brand-badge">SIMULATOR</span>
+          </div>
+          <span class="brand-subtitle">DRONE-THREAT RECOGNITION TRAINER - ADAPTIVE SCENARIO SUITE</span>
         </div>
       </div>
-      <div class="condition-chip-item">
-        <span class="chip-caption">TIME</span>
-        <div class="chip pill-amber" id="chip-tod">
-          <span class="chip-dot"></span><span id="chip-tod-val">Day</span>
-        </div>
-      </div>
-      <div class="condition-chip-item">
-        <span class="chip-caption">WEATHER</span>
-        <div class="chip pill-bluegrey" id="chip-weather">
-          <span class="chip-dot"></span><span id="chip-weather-val">Clear</span>
-        </div>
-      </div>
-      <div class="condition-chip-item">
-        <span class="chip-caption">TERRAIN</span>
-        <div class="chip pill-slategreen" id="chip-terrain">
-          <span class="chip-dot"></span><span id="chip-terrain-val">Open</span>
-        </div>
-      </div>
-      <div class="condition-chip-item">
-        <span class="chip-caption">DEGRADATION</span>
-        <div class="chip pill-green" id="chip-degradation">
-          <span class="chip-dot"></span><span id="chip-degradation-val">None</span>
-        </div>
-      </div>
-    </div>
 
-    <!-- Time Remaining Clock -->
-    <div class="top-right-tools">
-      <div class="timer-box">
-        <span class="timer-label">Time Remaining</span>
-        <span class="timer-val" id="time-remaining-val">00:00</span>
+      <!-- Active Scenario Condition Chips (Caption above, coloured pill below) -->
+      <div class="condition-chips" id="condition-chips">
+        <div class="condition-chip-item">
+          <span class="chip-caption">STATUS</span>
+          <div class="chip pill-green" id="chip-system-ready">
+            <span class="chip-dot"></span><span>SYSTEM READY</span>
+          </div>
+        </div>
+        <div class="condition-chip-item">
+          <span class="chip-caption">TIME</span>
+          <div class="chip pill-amber" id="chip-tod">
+            <span class="chip-dot"></span><span id="chip-tod-val">Day</span>
+          </div>
+        </div>
+        <div class="condition-chip-item">
+          <span class="chip-caption">WEATHER</span>
+          <div class="chip pill-bluegrey" id="chip-weather">
+            <span class="chip-dot"></span><span id="chip-weather-val">Clear</span>
+          </div>
+        </div>
+        <div class="condition-chip-item">
+          <span class="chip-caption">TERRAIN</span>
+          <div class="chip pill-slategreen" id="chip-terrain">
+            <span class="chip-dot"></span><span id="chip-terrain-val">Open</span>
+          </div>
+        </div>
+        <div class="condition-chip-item">
+          <span class="chip-caption">DEGRADATION</span>
+          <div class="chip pill-green" id="chip-degradation">
+            <span class="chip-dot"></span><span id="chip-degradation-val">None</span>
+          </div>
+        </div>
       </div>
-    </div>
-  </header>
+
+      <!-- Time Remaining Clock and Fullscreen Button -->
+      <div class="top-right-tools">
+        <div class="timer-box">
+          <span class="timer-label">Time Remaining</span>
+          <span class="timer-val" id="time-remaining-val">00:00</span>
+        </div>
+        <button class="btn-secondary" id="btn-toggle-fullscreen" title="Toggle Fullscreen (F)" style="padding: 6px 12px; font-size: 11px; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+          <svg id="icon-fs-enter" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          <svg id="icon-fs-exit" style="display:none;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+          <span id="label-fullscreen">Fullscreen</span>
+        </button>
+      </div>
+    </header>
 
   <!-- Main View Grid (100vh full-viewport, no page scroll) -->
   <main class="main-layout">
@@ -403,6 +411,8 @@
       </div>
     </div>
   </div>
+
+  </div> <!-- /simulator-root -->
 
   <!-- Load JavaScript Modules -->
   <script src="config.js?v=skyready"></script>
