@@ -11,7 +11,8 @@
     "log_only",
     "monitor",
     "report_to_command",
-    "alert_unit"
+    "alert_unit",
+    "countermeasure_simulated"
   ],
   "rules": {
     "bird|benign": {
@@ -21,7 +22,8 @@
         "log_only": 0.5,
         "monitor": 0.0,
         "report_to_command": 0.0,
-        "alert_unit": 0.0
+        "alert_unit": 0.0,
+        "countermeasure_simulated": 0.0
       }
     },
     "bird|suspicious": {
@@ -31,7 +33,8 @@
         "monitor": 0.5,
         "ignore": 0.0,
         "report_to_command": 0.0,
-        "alert_unit": 0.0
+        "alert_unit": 0.0,
+        "countermeasure_simulated": 0.0
       }
     },
     "balloon|benign": {
@@ -41,7 +44,8 @@
         "log_only": 0.5,
         "monitor": 0.0,
         "report_to_command": 0.0,
-        "alert_unit": 0.0
+        "alert_unit": 0.0,
+        "countermeasure_simulated": 0.0
       }
     },
     "balloon|suspicious": {
@@ -51,7 +55,8 @@
         "report_to_command": 0.5,
         "log_only": 0.0,
         "ignore": 0.0,
-        "alert_unit": 0.0
+        "alert_unit": 0.0,
+        "countermeasure_simulated": 0.0
       }
     },
     "light_aircraft|benign": {
@@ -61,7 +66,8 @@
         "monitor": 0.5,
         "ignore": 0.0,
         "report_to_command": 0.0,
-        "alert_unit": 0.0
+        "alert_unit": 0.0,
+        "countermeasure_simulated": 0.0
       }
     },
     "light_aircraft|suspicious": {
@@ -71,7 +77,8 @@
         "monitor": 0.5,
         "alert_unit": 0.5,
         "log_only": 0.0,
-        "ignore": 0.0
+        "ignore": 0.0,
+        "countermeasure_simulated": 0.0
       }
     },
     "multirotor|benign": {
@@ -81,7 +88,8 @@
         "log_only": 0.5,
         "report_to_command": 0.0,
         "alert_unit": 0.0,
-        "ignore": 0.0
+        "ignore": 0.0,
+        "countermeasure_simulated": 0.0
       }
     },
     "multirotor|suspicious": {
@@ -89,6 +97,7 @@
       "responses": {
         "alert_unit": 1.0,
         "report_to_command": 0.5,
+        "countermeasure_simulated": 0.5,
         "monitor": 0.0,
         "log_only": 0.0,
         "ignore": 0.0
@@ -101,7 +110,8 @@
         "report_to_command": 0.5,
         "log_only": 0.0,
         "alert_unit": 0.0,
-        "ignore": 0.0
+        "ignore": 0.0,
+        "countermeasure_simulated": 0.0
       }
     },
     "fixed_wing_uav|suspicious": {
@@ -109,6 +119,7 @@
       "responses": {
         "alert_unit": 1.0,
         "report_to_command": 0.5,
+        "countermeasure_simulated": 0.5,
         "monitor": 0.0,
         "log_only": 0.0,
         "ignore": 0.0
@@ -121,7 +132,8 @@
         "log_only": 0.5,
         "report_to_command": 0.0,
         "alert_unit": 0.0,
-        "ignore": 0.0
+        "ignore": 0.0,
+        "countermeasure_simulated": 0.0
       }
     },
     "unknown|suspicious": {
@@ -130,6 +142,7 @@
         "report_to_command": 1.0,
         "monitor": 0.5,
         "alert_unit": 0.5,
+        "countermeasure_simulated": 0.5,
         "log_only": 0.0,
         "ignore": 0.0
       }

@@ -41,6 +41,13 @@ def test_decision_tree_covers_all_twelve_rules():
         assert "responses" in rule
         assert isinstance(rule["responses"], dict)
         assert len(rule["responses"]) > 0
+        assert "countermeasure_simulated" in rule["responses"]
+
+    assert "countermeasure_simulated" in tree.get("responses", [])
+    assert rules["multirotor|suspicious"]["responses"]["countermeasure_simulated"] == 0.5
+    assert rules["fixed_wing_uav|suspicious"]["responses"]["countermeasure_simulated"] == 0.5
+    assert rules["unknown|suspicious"]["responses"]["countermeasure_simulated"] == 0.5
+    assert rules["bird|benign"]["responses"]["countermeasure_simulated"] == 0.0
 
 
 def test_d_prime_hand_computed_match():

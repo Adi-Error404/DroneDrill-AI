@@ -49,6 +49,25 @@ ALTITUDE_BAND = ["low", "med", "high"]
 BEARING_SECTOR = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 BEHAVIOUR_LABEL = ["benign", "suspicious"]
 
+# --- Canvas Projection Reference Horizon Fractions ---
+HORIZON_FRACTIONS = {
+    "open_day": 0.60,
+    "open_night": 0.66,
+    "urban_day": 0.58,
+    "urban_night": 0.64,
+    "forest_day": 0.62,
+    "forest_night": 0.80,
+    "hills_day": 0.74,
+    "hills_night": 0.69,
+}
+
+
+def get_horizon_fraction(terrain: str, time_of_day: str) -> float:
+    """Return horizon fraction matching client/renderer.js. Dusk uses the day background."""
+    base_time = "day" if time_of_day == "dusk" else (time_of_day or "day")
+    key = f"{terrain}_{base_time}"
+    return HORIZON_FRACTIONS.get(key, 0.65)
+
 
 def all_cells() -> List[Tuple[str, str, str, str, str, str]]:
     """Return every combination of condition factors as a list of tuples.

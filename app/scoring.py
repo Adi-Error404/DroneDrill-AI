@@ -11,7 +11,7 @@ Calculates multi-dimensional performance metrics for simulation sessions:
 
 from pathlib import Path
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import scipy.stats as stats
 
@@ -27,6 +27,58 @@ WEIGHTS: Dict[str, float] = {
     "decision": 0.25,
     "timeliness": 0.10,
     "calibration": 0.10,
+}
+
+CLASS_CANONICAL_MAP: Dict[str, str] = {
+    "multirotor drone": "multirotor",
+    "multirotor": "multirotor",
+    "fixed-wing uav": "fixed_wing_uav",
+    "fixed wing uav": "fixed_wing_uav",
+    "fixed_wing": "fixed_wing_uav",
+    "fixed_wing_uav": "fixed_wing_uav",
+    "bird": "bird",
+    "balloon": "balloon",
+    "aircraft": "light_aircraft",
+    "light aircraft": "light_aircraft",
+    "light_aircraft": "light_aircraft",
+    "unknown": "unknown",
+}
+
+THREAT_CANONICAL_MAP: Dict[str, int] = {
+    "benign": 0,
+    "low": 1,
+    "elevated": 2,
+    "high": 3,
+    "0": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+}
+
+RESPONSE_CANONICAL_MAP: Dict[str, str] = {
+    "ignore contact": "ignore",
+    "ignore": "ignore",
+    "log only": "log_only",
+    "log_only": "log_only",
+    "monitor track": "monitor",
+    "monitor": "monitor",
+    "report to command": "report_to_command",
+    "report_to_command": "report_to_command",
+    "alert unit": "alert_unit",
+    "alert_unit": "alert_unit",
+    "countermeasure (simulated)": "countermeasure_simulated",
+    "countermeasure simulated": "countermeasure_simulated",
+    "countermeasure": "countermeasure_simulated",
+    "countermeasure_simulated": "countermeasure_simulated",
+}
+
+VALID_RESPONSES = {
+    "ignore",
+    "log_only",
+    "monitor",
+    "report_to_command",
+    "alert_unit",
+    "countermeasure_simulated",
 }
 
 
@@ -66,31 +118,50 @@ def score_session(
     # Index scenario objects by id
     scenario_obj_map = {obj["id"]: obj for obj in objects}
 
-    # Extract object-specific events (first or best event per object)
+    # Extract object-specific events (keep the last event per object)
     event_by_id: Dict[str, Dict[str, Any]] = {}
+    warnings: List[str] = []
     for ev in events:
+        if not isinstance(ev, dict):
+            continue
         obj_id = ev.get("object_id")
-        if obj_id and obj_id not in event_by_id:
-            event_by_id[obj_id] = ev
+        if obj_id is not None:
+            obj_id_str = str(obj_id).strip()
+            if obj_id_str:
+                if obj_id_str not in scenario_obj_map:
+                    warnings.append(f"Event object_id '{obj_id_str}' not found in scenario objects.")
+                event_by_id[obj_id_str] = ev
 
     # --- 1. DETECTION (Signal Detection Theory) ---
     hits = 0
     missed_list: List[str] = []
-    detected_events: List[Dict[str, Any]] = []
+    detected_events: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
 
     for obj in objects:
-        oid = obj["id"]
+        oid = str(obj.get("id", ""))
         ev = event_by_id.get(oid)
-        if ev and ev.get("detected", False):
+        if ev and bool(ev.get("detected", False)):
             hits += 1
             detected_events.append((obj, ev))
         else:
             missed_list.append(oid)
 
     misses = max(0, n_obj - hits)
-    fa_raw = int(false_alarms)
+    try:
+        fa_raw = int(false_alarms) if false_alarms is not None else 0
+        if fa_raw < 0:
+            fa_raw = 0
+    except (ValueError, TypeError):
+        fa_raw = 0
+
     nw = scenario.get("noise_windows", 3)
-    noise_windows = 3 if nw is None else int(nw)
+    try:
+        noise_windows = int(nw) if nw is not None else 3
+        if noise_windows < 0:
+            noise_windows = 3
+    except (ValueError, TypeError):
+        noise_windows = 3
+
     max_noise = max(0, noise_windows)
     fa_scored = int(np.clip(fa_raw, 0, max_noise))
 
@@ -127,8 +198,9 @@ def score_session(
 
     correct_class_count = 0
     for obj, ev in detected_events:
-        true_cls = obj.get("true_class", "unknown")
-        pred_cls = ev.get("classified_as", "unknown")
+        true_cls = str(obj.get("true_class") or "unknown")
+        raw_pred = str(ev.get("classified_as") or "unknown").strip().lower()
+        pred_cls = CLASS_CANONICAL_MAP.get(raw_pred, raw_pred)
 
         if true_cls in confusion_matrix and pred_cls in confusion_matrix[true_cls]:
             confusion_matrix[true_cls][pred_cls] += 1
@@ -138,51 +210,99 @@ def score_session(
 
     if detected_events:
         classification_score = float(correct_class_count / len(detected_events))
+        if not np.isfinite(classification_score):
+            classification_score = 0.0
     else:
         classification_score = 0.0
 
     # --- 3. DECISION (Instructor Rule Lookup) ---
     tree_data = load_decision_tree(decision_tree_path)
-    rules = tree_data.get("rules", {})
+    rules = tree_data.get("rules", {}) if isinstance(tree_data, dict) else {}
 
     decision_scores: List[float] = []
     for obj, ev in detected_events:
-        true_cls = obj.get("true_class", "unknown")
-        behaviour = obj.get("behaviour_label", "benign")
+        true_cls = str(obj.get("true_class") or "unknown")
+        behaviour = str(obj.get("behaviour_label") or "benign")
         rule_key = f"{true_cls}|{behaviour}"
 
         rule = rules.get(rule_key, {})
         expected_level = rule.get("expected_threat_level", 1)
-        response_weights = rule.get("responses", {})
+        response_weights = rule.get("responses", {}) if isinstance(rule.get("responses"), dict) else {}
 
-        resp_chosen = ev.get("response_chosen", "")
-        base_resp_score = float(response_weights.get(resp_chosen, 0.0))
+        raw_resp = ev.get("response_chosen")
+        clean_resp = str(raw_resp).strip().lower() if raw_resp is not None else ""
+        resp_chosen = RESPONSE_CANONICAL_MAP.get(clean_resp, clean_resp)
 
-        # 0.25 penalty if threat level rated does not match expected level
-        rated_level = ev.get("threat_level_rated")
+        if resp_chosen and resp_chosen not in VALID_RESPONSES:
+            warnings.append(f"Target '{obj.get('id')}': unknown response '{raw_resp}' scored 0")
+            base_resp_score = 0.0
+        else:
+            try:
+                base_resp_score = float(response_weights.get(resp_chosen, 0.0))
+                if not np.isfinite(base_resp_score):
+                    base_resp_score = 0.0
+            except (ValueError, TypeError):
+                base_resp_score = 0.0
+
+        # Penalty if threat level rated does not match expected level or was not provided
+        raw_rated = ev.get("threat_level_rated")
+        rated_str = str(raw_rated).strip().lower() if raw_rated is not None else None
+        rated_level = THREAT_CANONICAL_MAP.get(rated_str, None) if rated_str is not None else None
+        if rated_level is None and raw_rated is not None:
+            try:
+                rated_level = int(raw_rated)
+            except (ValueError, TypeError):
+                rated_level = None
+
         if rated_level is not None and rated_level != expected_level:
+            obj_dec_score = max(0.0, base_resp_score - 0.25)
+        elif rated_level is None:
             obj_dec_score = max(0.0, base_resp_score - 0.25)
         else:
             obj_dec_score = base_resp_score
 
-        decision_scores.append(obj_dec_score)
+        decision_scores.append(float(np.clip(obj_dec_score, 0.0, 1.0)))
 
     if decision_scores:
         decision_score = float(np.mean(decision_scores))
+        if not np.isfinite(decision_score):
+            decision_score = 0.0
     else:
         decision_score = 0.0
 
     # --- 4. TIMELINESS ---
-    limit_time = 0.6 * duration_s * (1.0 + difficulty_index)
+    try:
+        dur_val = float(duration_s) if duration_s is not None else 60.0
+    except (ValueError, TypeError):
+        dur_val = 60.0
+    try:
+        diff_val = float(difficulty_index) if difficulty_index is not None else 0.5
+    except (ValueError, TypeError):
+        diff_val = 0.5
+
+    limit_time = 0.6 * dur_val * (1.0 + diff_val)
+    if limit_time <= 0 or not np.isfinite(limit_time):
+        limit_time = 60.0
     timeliness_scores: List[float] = []
 
     for _, ev in detected_events:
-        detect_time = float(ev.get("detect_time_s", limit_time))
+        raw_dt = ev.get("detect_time_s")
+        try:
+            detect_time = float(raw_dt) if raw_dt is not None else limit_time
+            if not np.isfinite(detect_time) or detect_time < 0:
+                detect_time = limit_time
+        except (ValueError, TypeError):
+            detect_time = limit_time
+
         obj_timeliness = float(np.clip(1.0 - (detect_time / limit_time), 0.0, 1.0))
+        if not np.isfinite(obj_timeliness):
+            obj_timeliness = 0.0
         timeliness_scores.append(obj_timeliness)
 
     if timeliness_scores:
         timeliness_score = float(np.mean(timeliness_scores))
+        if not np.isfinite(timeliness_score):
+            timeliness_score = 0.0
     else:
         timeliness_score = 0.0
 
@@ -191,10 +311,21 @@ def score_session(
     confidences: List[float] = []
 
     for obj, ev in detected_events:
-        conf = float(ev.get("confidence", 0.5))
+        raw_conf = ev.get("confidence")
+        try:
+            conf = float(raw_conf) if raw_conf is not None else 0.5
+            if not np.isfinite(conf):
+                conf = 0.5
+            elif conf > 1.0 and conf <= 100.0:
+                conf = conf / 100.0
+            conf = float(np.clip(conf, 0.0, 1.0))
+        except (ValueError, TypeError):
+            conf = 0.5
+
         confidences.append(conf)
-        true_cls = obj.get("true_class", "unknown")
-        pred_cls = ev.get("classified_as", "unknown")
+        true_cls = str(obj.get("true_class") or "unknown")
+        raw_pred = str(ev.get("classified_as") or "unknown").strip().lower()
+        pred_cls = CLASS_CANONICAL_MAP.get(raw_pred, raw_pred)
         is_correct = 1.0 if true_cls == pred_cls else 0.0
 
         sq_err = (conf - is_correct) ** 2
@@ -202,6 +333,8 @@ def score_session(
 
     if detected_events:
         brier = float(np.mean(squared_errors))
+        if not np.isfinite(brier):
+            brier = 0.0
         calibration_score = float(np.clip(1.0 - brier, 0.0, 1.0))
         mean_confidence = float(np.mean(confidences))
         mean_accuracy = classification_score
@@ -219,7 +352,8 @@ def score_session(
         + WEIGHTS["timeliness"] * timeliness_score
         + WEIGHTS["calibration"] * calibration_score
     )
-    overall_score = float(np.clip(overall, 0.0, 1.0))
+    overall_score = float(np.clip(overall, 0.0, 1.0)) if np.isfinite(overall) else 0.0
+
 
     # --- SKILL-WISE OUTPUT (for skill model mapping) ---
     skill_scores = {
@@ -279,4 +413,5 @@ def score_session(
         "false_alarms_raw": fa_raw,
         "false_alarms_scored": fa_scored,
         "skill_scores": skill_scores,
+        "warnings": warnings,
     }

@@ -25,6 +25,7 @@ from app.factors import (
     BEHAVIOUR_LABEL,
 )
 from app.db import get_seen_cells
+from app.sensor_view import check_main_view_visibility
 
 # --- Editable Difficulty Weights (Sum = 1.0) ---
 WEIGHTS: Dict[str, float] = {
@@ -77,12 +78,14 @@ class CoverageReport(float):
     seen: int
     total: int
     coverage: float
+    fraction: float
 
     def __new__(cls, fraction: float, seen: int = 0, total: int = 0):
         obj = super().__new__(cls, fraction)
         obj.seen = seen
         obj.total = total
         obj.coverage = fraction
+        obj.fraction = fraction
         return obj
 
     def __getitem__(self, item: str) -> Any:
@@ -142,12 +145,16 @@ def _compute_fingerprint(factors: Dict[str, Any], objects: List[Dict[str, Any]])
     return hashlib.sha1(fp_raw.encode("utf-8")).hexdigest()
 
 
-def _build_scenario_for_cell(cell: Tuple[str, ...], rng: random.Random) -> Dict[str, Any]:
+def _build_scenario_for_cell(
+    cell: Tuple[str, ...],
+    rng: random.Random,
+    object_count: Optional[str] = None,
+) -> Dict[str, Any]:
     """Build a complete scenario dictionary for a specific condition cell."""
     time_of_day, weather, terrain, sensor_mode, degradation, distractors = cell
 
     # Object-level factor selections
-    count_level = rng.choice(OBJECT_COUNT_LEVELS)
+    count_level = object_count if object_count in OBJECT_COUNT_LEVELS else rng.choice(OBJECT_COUNT_LEVELS)
     motion = rng.choice(MOTION_PATTERN)
     spd_band = rng.choice(SPEED_BAND)
     alt_band = rng.choice(ALTITUDE_BAND)
@@ -179,6 +186,7 @@ def _build_scenario_for_cell(cell: Tuple[str, ...], rng: random.Random) -> Dict[
 
     # Base bearing angle
     base_deg = BEARING_ANGLES.get(sector, 0.0)
+    duration_s = float(rng.choice([45.0, 60.0, 90.0, 120.0]))
 
     # Generate objects
     objects: List[Dict[str, Any]] = []
@@ -195,18 +203,34 @@ def _build_scenario_for_cell(cell: Tuple[str, ...], rng: random.Random) -> Dict[
         else:  # multirotor, fixed_wing_uav
             threat_level = 2 if behaviour == "benign" else 3
 
-        # Spatial position based on bearing sector
-        angle_jitter = rng.uniform(-15.0, 15.0)
-        rad = math.radians(base_deg + angle_jitter)
-        dist = rng.uniform(1000.0, 3000.0)
-        start_x = dist * math.sin(rad)
-        start_y = dist * math.cos(rad)
+        # Spatial position: Ensure objects map inside visible camera canvas for all terrains
+        if i == 0:
+            # Primary target starts well inside the forward viewing frustum
+            angle_jitter = rng.uniform(-18.0, 18.0)
+            rad = math.radians(angle_jitter)
+            dist = rng.uniform(1100.0, 2200.0)
+            start_x = dist * math.sin(rad)
+            start_y = dist * math.cos(rad)
+        else:
+            angle_jitter = rng.uniform(-15.0, 15.0)
+            deg = base_deg + angle_jitter
+            rad = math.radians(deg)
+            dist = rng.uniform(1000.0, 2800.0)
+            start_y = max(400.0, dist * abs(math.cos(rad)))
+            start_x = dist * math.sin(rad) * 0.5
 
-        # Altitude band
+        # Altitude band tailored to terrain clearance so targets are above ground & skyline
         if alt_band == "low":
-            start_z = rng.uniform(20.0, 100.0)
+            if terrain == "urban":
+                start_z = rng.uniform(130.0, 240.0)
+            elif terrain == "hills":
+                start_z = rng.uniform(100.0, 200.0)
+            elif terrain == "forest":
+                start_z = rng.uniform(90.0, 180.0)
+            else:
+                start_z = rng.uniform(60.0, 140.0)
         elif alt_band == "med":
-            start_z = rng.uniform(100.0, 500.0)
+            start_z = rng.uniform(220.0, 500.0)
         else:
             start_z = rng.uniform(500.0, 1500.0)
 
@@ -218,27 +242,30 @@ def _build_scenario_for_cell(cell: Tuple[str, ...], rng: random.Random) -> Dict[
         else:
             spd = rng.uniform(35.0, 60.0)
 
-        # Velocity components based on motion pattern
+        # Velocity components ensuring targets traverse or stay within forward view
         if motion in ("straight", "converging"):
-            vx = -math.sin(rad) * spd
-            vy = -math.cos(rad) * spd
-            vz = rng.uniform(-0.5, 0.5)
+            vx = -math.sin(rad) * spd * 0.5
+            vy = -spd * 0.4
+            vz = rng.uniform(-0.1, 0.1)
         elif motion == "loiter":
-            # Tangential velocity
-            vx = -math.cos(rad) * spd * 0.5
-            vy = math.sin(rad) * spd * 0.5
+            vx = -math.cos(rad) * spd * 0.3
+            vy = math.sin(rad) * spd * 0.3
             vz = 0.0
         elif motion == "parallel":
-            # Cross track
-            vx = math.cos(rad) * spd
-            vy = -math.sin(rad) * spd
+            vx = math.copysign(spd * 0.7, -start_x if abs(start_x) > 10 else 1.0)
+            vy = rng.uniform(-1.0, 1.0)
+            vz = rng.uniform(-0.1, 0.1)
+        else:  # erratic
+            vx = rng.uniform(-spd * 0.4, spd * 0.4)
+            vy = -abs(rng.uniform(spd * 0.1, spd * 0.3))
             vz = rng.uniform(-0.2, 0.2)
-        else:  # "erratic"
-            vx = rng.uniform(-spd, spd)
-            vy = rng.uniform(-spd, spd)
-            vz = rng.uniform(-2.0, 2.0)
 
-        appears_at = rng.uniform(0.0, 15.0)
+        # Appear time strictly falls inside duration_s with adequate remaining time
+        # Requirement: Every scenario must have a visible, clickable object within first 5 seconds
+        if i == 0:
+            appears_at = rng.uniform(0.0, 1.5)
+        else:
+            appears_at = rng.uniform(0.0, max(1.0, min(15.0, duration_s - 15.0)))
 
         objects.append(
             {
@@ -256,7 +283,6 @@ def _build_scenario_for_cell(cell: Tuple[str, ...], rng: random.Random) -> Dict[
     distractor_items = {"none": 0, "birds": 2, "clutter": 4}.get(distractors, 0)
     noise_windows = 3 + distractor_items
 
-    duration_s = float(rng.choice([45.0, 60.0, 90.0, 120.0]))
     difficulty_index = _calculate_difficulty(factors)
     fingerprint = _compute_fingerprint(factors, objects)
 
@@ -278,11 +304,53 @@ def _build_scenario_for_cell(cell: Tuple[str, ...], rng: random.Random) -> Dict[
 def generate_for_cell(
     cell: Union[Tuple[str, ...], List[str]],
     rng: Optional[Union[int, random.Random, np.random.Generator]] = None,
+    object_count: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Target a specific condition cell and generate a scenario."""
+    """Target a specific condition cell and generate a scenario.
+    
+    Enforces validity rule: scenario must have at least one object on-screen and visible
+    in the MAIN view for at least 6 consecutive seconds.
+    If not, regenerates up to 20 tries, then relaxes degradation level.
+    """
     rng_inst = _coerce_rng(rng)
     cell_tuple = tuple(cell)
-    return _build_scenario_for_cell(cell_tuple, rng_inst)
+
+    # 1. Try up to 20 times with original cell
+    for _ in range(20):
+        scenario = _build_scenario_for_cell(cell_tuple, rng_inst, object_count=object_count)
+        if check_main_view_visibility(scenario, min_consecutive_s=6.0):
+            return scenario
+
+    # 2. Relax degradation level if not valid after 20 tries
+    degradation_order = ["occlusion", "dropout", "lag", "noise", "none"]
+    curr_deg = cell_tuple[4] if len(cell_tuple) > 4 else "none"
+
+    if curr_deg in degradation_order:
+        start_idx = degradation_order.index(curr_deg)
+        for relaxed_deg in degradation_order[start_idx + 1:]:
+            relaxed_cell = list(cell_tuple)
+            relaxed_cell[4] = relaxed_deg
+
+            # If the original cell was held out, prefer matching held-out cells
+            candidate_tuple = tuple(relaxed_cell)
+            if cell_tuple in HELD_OUT_CELLS and candidate_tuple not in HELD_OUT_CELLS:
+                # Find any held-out cell with relaxed degradation
+                matching_held_out = [
+                    c for c in sorted(list(HELD_OUT_CELLS))
+                    if c[4] == relaxed_deg and c[0] == cell_tuple[0] and c[1] == cell_tuple[1]
+                ]
+                if matching_held_out:
+                    candidate_tuple = matching_held_out[0]
+
+            for _ in range(5):
+                scenario = _build_scenario_for_cell(candidate_tuple, rng_inst, object_count=object_count)
+                if check_main_view_visibility(scenario, min_consecutive_s=6.0):
+                    return scenario
+
+    # 3. Fallback nominal
+    fallback_cell = list(cell_tuple)
+    fallback_cell[4] = "none"
+    return _build_scenario_for_cell(tuple(fallback_cell), rng_inst, object_count=object_count)
 
 
 def generate_scenario(
@@ -292,6 +360,7 @@ def generate_scenario(
     """Generate a random simulation scenario.
     
     Must NEVER draw from HELD_OUT cells unless allow_held_out=True.
+    Enforces validity rule with up to 20 retries and degradation relaxation.
     """
     rng_inst = _coerce_rng(rng)
 
@@ -302,7 +371,8 @@ def generate_scenario(
         candidate_cells = sorted(list(PRACTICE_CELLS))
 
     selected_cell = rng_inst.choice(candidate_cells)
-    return _build_scenario_for_cell(selected_cell, rng_inst)
+    return generate_for_cell(selected_cell, rng=rng_inst)
+
 
 
 def coverage_report(trainee_id: str, db_path: Optional[str] = None) -> CoverageReport:
