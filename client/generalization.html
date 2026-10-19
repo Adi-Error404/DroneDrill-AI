@@ -290,7 +290,7 @@
         const res = await fetch(`${CONFIG.API_BASE}/trainees`);
         if (!res.ok) return;
         const data = await res.json();
-        currentTrainees = data.trainees || [];
+        currentTrainees = Array.isArray(data) ? data : (data.trainees || []);
         const sel = document.getElementById('select-trainee');
         if (!sel) return;
         sel.innerHTML = '';

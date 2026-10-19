@@ -325,10 +325,11 @@
         const res = await fetch(`${CONFIG.API_BASE}/trainees`);
         if (!res.ok) return;
         const data = await res.json();
+        const traineesList = Array.isArray(data) ? data : (data.trainees || []);
         const sel = document.getElementById('builder-trainee');
         if (!sel) return;
         sel.innerHTML = '';
-        (data.trainees || []).forEach(t => {
+        traineesList.forEach(t => {
           const opt = document.createElement('option');
           opt.value = t.id;
           opt.textContent = `${t.name || t.id} (${t.id})`;
