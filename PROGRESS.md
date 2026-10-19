@@ -7,7 +7,7 @@
 
 ## Phases
 - [x] **PHASE 1 - AUDIT THE "12 TARGETS, ONLY 3 ON SCREEN" BUG (no edits yet)**: Done
-- [ ] **PHASE 2 - ONE SOURCE OF TRUTH FOR VISIBILITY AND SCORING**: In Progress
+- [x] **PHASE 2 - ONE SOURCE OF TRUTH FOR VISIBILITY AND SCORING**: Done
 - [ ] **PHASE 3 - AAR REDESIGN (modal & aar.html shared renderer)**: Not started
 - [ ] **PHASE 4 - FULLSCREEN SIMULATOR WITH ACTIONS ON THE RIGHT**: Not started
 - [ ] **PHASE 5 - VERIFY (multi-resolution & scenarios verification)**: Not started

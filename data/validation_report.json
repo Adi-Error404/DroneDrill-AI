@@ -1,7 +1,7 @@
 {
   "metric": "Pearson correlation (true condition skill vs. Bayesian posterior mean)",
-  "r": 0.8208,
-  "p_value": 0.012529113007254306,
+  "r": 0.943,
+  "p_value": 0.0004443952986925064,
   "sessions": 40,
   "trainee_id": "trainee_recovery_agent",
   "status": "VALIDATED",

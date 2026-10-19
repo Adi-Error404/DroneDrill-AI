@@ -91,11 +91,11 @@ class FeedsRenderer {
       this.screenObjectsThermal = window.renderFrame(this.ctxThermal, state, viewThermal) || [];
     }
 
-    // 3. Radar Feed: Stays as it is
-    this.renderRadar(activeObjects, simTime, factors, flaggedObj);
+    // 3. Radar Feed: Draws only objects currently visible in main view
+    this.renderRadar(activeObjects, simTime, factors, flaggedObj, visibilityWindows);
   }
 
-  renderRadar(activeObjects, simTime, factors, flaggedObj) {
+  renderRadar(activeObjects, simTime, factors, flaggedObj, visibilityWindows = {}) {
     if (!this.ctxRadar || !this.canvasRadar) return;
     const ctx = this.ctxRadar;
     const w = this.canvasRadar.width;
@@ -141,8 +141,15 @@ class FeedsRenderer {
     ctx.lineTo(cx + Math.cos(this.radarSweep) * (w / 2), cy + Math.sin(this.radarSweep) * (h / 2));
     ctx.stroke();
 
-    // Display all active contacts: red for hostile/selected, green for detected, amber for track
-    activeObjects.forEach(obj => {
+    // One source of truth: display only contacts currently visible in main view
+    const visibleObjects = activeObjects.filter(obj => {
+      if (typeof window.isVisibleInMainView === 'function') {
+        return window.isVisibleInMainView(obj, simTime, factors, visibilityWindows);
+      }
+      return true;
+    });
+
+    visibleObjects.forEach(obj => {
       const rx = cx + (obj.x_m / 3000) * (w * 0.42);
       const ry = cy - (obj.y_m / 3000) * (h * 0.42);
 

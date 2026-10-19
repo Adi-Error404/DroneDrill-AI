@@ -10,7 +10,7 @@ class RadarWidget {
     this.sweepAngle = 0;
   }
 
-  render(activeObjects = [], simTime = 0) {
+  render(activeObjects = [], simTime = 0, factors = {}, visibilityWindows = {}) {
     if (!this.canvas || !this.ctx) return;
     const ctx = this.ctx;
     const w = this.canvas.width;
@@ -83,8 +83,16 @@ class RadarWidget {
     ctx.lineTo(sweepX, sweepY);
     ctx.stroke();
 
+    // One source of truth: Radar draws ONLY objects currently visible in the main view
+    const visibleObjects = activeObjects.filter(obj => {
+      if (typeof window.isVisibleInMainView === 'function') {
+        return window.isVisibleInMainView(obj, simTime, factors, visibilityWindows);
+      }
+      return true;
+    });
+
     // Render Target Blips from Telemetry (x_m, y_m): amber/red, or green when detected
-    activeObjects.forEach(obj => {
+    visibleObjects.forEach(obj => {
       // Map local metres (x_m east/west, y_m north/south) to radar coordinates
       // Origin (0,0) is center (cx, cy). North is -y on canvas, East is +x
       const normX = (obj.x_m / this.maxRangeM) * r;

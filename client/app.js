@@ -567,7 +567,8 @@
             active,
             state.simTime,
             state.visibilityWindows,
-            state.selectedObjectId
+            state.selectedObjectId,
+            state.factors
           );
         }
 

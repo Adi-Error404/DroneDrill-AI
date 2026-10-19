@@ -16,6 +16,7 @@ import numpy as np
 import scipy.stats as stats
 
 from app.factors import CLASS_MIX
+from app.sensor_view import get_scored_and_unscored_objects
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_DECISION_TREE_PATH = BASE_DIR / "data" / "decision_tree.json"
@@ -132,12 +133,16 @@ def score_session(
                     warnings.append(f"Event object_id '{obj_id_str}' not found in scenario objects.")
                 event_by_id[obj_id_str] = ev
 
-    # --- 1. DETECTION (Signal Detection Theory) ---
+    # Determine scored vs not_scored objects (visibility >= 3s)
+    scored_objects, not_scored_ids = get_scored_and_unscored_objects(scenario, min_visible_s=3.0)
+    n_scored = len(scored_objects)
+
+    # --- 1. DETECTION (Signal Detection Theory & Detection Rate) ---
     hits = 0
     missed_list: List[str] = []
     detected_events: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
 
-    for obj in objects:
+    for obj in scored_objects:
         oid = str(obj.get("id", ""))
         ev = event_by_id.get(oid)
         if ev and bool(ev.get("detected", False)):
@@ -146,7 +151,7 @@ def score_session(
         else:
             missed_list.append(oid)
 
-    misses = max(0, n_obj - hits)
+    misses = max(0, n_scored - hits)
     try:
         fa_raw = int(false_alarms) if false_alarms is not None else 0
         if fa_raw < 0:
@@ -165,7 +170,7 @@ def score_session(
     max_noise = max(0, noise_windows)
     fa_scored = int(np.clip(fa_raw, 0, max_noise))
 
-    max_obj = max(0, n_obj)
+    max_obj = max(1, n_scored)
     hits_scored = int(np.clip(hits, 0, max_obj))
 
     # Loglinear correction with clamping to avoid infinite z-scores
@@ -181,16 +186,24 @@ def score_session(
     d_prime = float(z_hit - z_fa)
     criterion_c = float(-0.5 * (z_hit + z_fa))
 
-    # Guard: if d_prime or criterion is not finite, set d_prime = 0 and detection_score = 0
+    # Guard: if d_prime or criterion is not finite, set d_prime = 0
     if not np.isfinite(d_prime) or not np.isfinite(criterion_c):
         d_prime = 0.0
         criterion_c = 0.0
-        detection_score = 0.0
+
+    # Detection = detected / scored objects, with precision penalty if false alarms present
+    if n_scored > 0:
+        base_detection = hits / n_scored
+        if fa_raw == 0:
+            detection_score = float(base_detection)
+        else:
+            precision = hits / (hits + fa_raw) if (hits + fa_raw) > 0 else 0.0
+            detection_score = float(np.clip(base_detection * (0.8 + 0.2 * precision) - 0.05 * min(fa_raw, 4), 0.0, 1.0))
     else:
-        # Normalized detection score clipped to [0, 1]
-        detection_score = float(np.clip(d_prime / 3.0, 0.0, 1.0))
-        if not np.isfinite(detection_score):
-            detection_score = 0.0
+        detection_score = 1.0 if fa_raw == 0 else 0.0
+
+    if not np.isfinite(detection_score):
+        detection_score = 0.0
 
     # --- 2. CLASSIFICATION ---
     # Confusion matrix initialization
@@ -380,7 +393,9 @@ def score_session(
             "false_alarms": fa_raw,
             "false_alarms_raw": fa_raw,
             "false_alarms_scored": fa_scored,
-            "n_objects": n_obj,
+            "n_objects": n_scored,
+            "n_scored": n_scored,
+            "n_total": n_obj,
             "noise_windows": noise_windows,
             "hit_rate": round(hit_rate, 4),
             "fa_rate": round(fa_rate, 4),
@@ -409,6 +424,8 @@ def score_session(
         "confusion_matrix": confusion_matrix,
         "missed": missed_list,
         "missed_objects": missed_list,
+        "not_scored": not_scored_ids,
+        "scored_objects": [obj["id"] for obj in scored_objects],
         "false_alarms": fa_raw,
         "false_alarms_raw": fa_raw,
         "false_alarms_scored": fa_scored,

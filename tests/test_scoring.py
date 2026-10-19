@@ -397,3 +397,227 @@ def test_zero_noise_windows_returns_finite_numbers():
     assert result["false_alarms_scored"] == 0
     assert result["detection"]["false_alarms_raw"] == 5
     assert result["detection"]["false_alarms_scored"] == 0
+
+
+def test_twelve_objects_three_visible_gives_perfect_scores():
+    """Requirement: a scenario with 12 generated objects where 3 are visible
+    and all 3 are flagged and classified correctly gives Detection 100% and Classification 100%.
+    """
+    objects = []
+    # 3 visible objects (in safe sky box, distance < 3000m, y > 0)
+    for i in range(3):
+        objects.append({
+            "id": f"vis_obj_{i+1}",
+            "true_class": "multirotor",
+            "true_threat_level": 2,
+            "behaviour_label": "suspicious",
+            "start_position": [0.0, 1000.0, 150.0],
+            "velocity": [0.0, 0.0, 0.0],
+            "appears_at_time": 0.0,
+        })
+    # 9 non-visible objects (behind camera y = -500)
+    for i in range(9):
+        objects.append({
+            "id": f"invis_obj_{i+1}",
+            "true_class": "bird",
+            "true_threat_level": 0,
+            "behaviour_label": "benign",
+            "start_position": [0.0, -500.0, 150.0],
+            "velocity": [0.0, 0.0, 0.0],
+            "appears_at_time": 0.0,
+        })
+
+    scenario = {
+        "scenario_id": "test_12_targets_3_visible",
+        "cell": ["day", "clear", "open", "EO", "none", "none"],
+        "factors": {"time_of_day": "day", "terrain": "open", "distractors": "none"},
+        "objects": objects,
+        "duration_s": 60.0,
+        "difficulty_index": 0.5,
+        "noise_windows": 5,
+        "fingerprint": "fake_fp",
+    }
+
+    # Trainee detects and correctly classifies all 3 visible objects
+    tree = load_decision_tree()
+    rules = tree.get("rules", {})
+    rule = rules.get("multirotor|suspicious", {})
+    best_response = max(rule.get("responses", {"alert_unit": 1.0}).items(), key=lambda x: x[1])[0]
+
+    events = [
+        {
+            "object_id": f"vis_obj_{i+1}",
+            "detected": True,
+            "detect_time_s": 2.0,
+            "classified_as": "multirotor",
+            "threat_level_rated": 2,
+            "response_chosen": best_response,
+            "confidence": 0.95,
+        }
+        for i in range(3)
+    ]
+
+    result = score_session(scenario=scenario, events=events, false_alarms=0)
+
+    # Scored objects must be exactly the 3 visible ones
+    assert set(result["scored_objects"]) == {"vis_obj_1", "vis_obj_2", "vis_obj_3"}
+    assert len(result["not_scored"]) == 9
+    assert set(result["not_scored"]) == {f"invis_obj_{i+1}" for i in range(9)}
+
+    # Detection 100% and Classification 100%
+    assert result["detection"]["hits"] == 3
+    assert result["detection"]["n_objects"] == 3
+    assert result["detection_score"] == 1.0
+    assert result["classification_score"] == 1.0
+    assert result["missed_objects"] == []
+
+
+def test_correct_classification_never_lowers_score():
+    """Requirement: a correct classification never lowers the classification score.
+    Also verified when missed objects or false alarms occur.
+    """
+    objects = [
+        {
+            "id": f"obj_{i+1}",
+            "true_class": "multirotor",
+            "true_threat_level": 2,
+            "behaviour_label": "suspicious",
+            "start_position": [0.0, 1000.0, 150.0],
+            "velocity": [0.0, 0.0, 0.0],
+            "appears_at_time": 0.0,
+        }
+        for i in range(3)
+    ]
+    scenario = {
+        "scenario_id": "test_class_stability",
+        "cell": ["day", "clear", "open", "EO", "none", "none"],
+        "factors": {"time_of_day": "day", "terrain": "open", "distractors": "none"},
+        "objects": objects,
+        "duration_s": 60.0,
+        "difficulty_index": 0.5,
+        "noise_windows": 5,
+        "fingerprint": "fake_fp",
+    }
+
+    # Event 1: 1 correct classification, 2 unflagged (missed)
+    events_1 = [
+        {
+            "object_id": "obj_1",
+            "detected": True,
+            "detect_time_s": 2.0,
+            "classified_as": "multirotor",
+            "threat_level_rated": 2,
+            "response_chosen": "alert_unit",
+            "confidence": 0.9,
+        }
+    ]
+    res1 = score_session(scenario=scenario, events=events_1, false_alarms=0)
+    assert res1["classification_score"] == 1.0
+
+    # Event 2: 2 correct classifications, 1 unflagged
+    events_2 = events_1 + [
+        {
+            "object_id": "obj_2",
+            "detected": True,
+            "detect_time_s": 3.0,
+            "classified_as": "multirotor",
+            "threat_level_rated": 2,
+            "response_chosen": "alert_unit",
+            "confidence": 0.9,
+        }
+    ]
+    res2 = score_session(scenario=scenario, events=events_2, false_alarms=0)
+    assert res2["classification_score"] == 1.0
+    assert res2["classification_score"] >= res1["classification_score"]
+
+    # Even with 5 false alarms, classification score must not drop
+    res2_with_fa = score_session(scenario=scenario, events=events_2, false_alarms=5)
+    assert res2_with_fa["classification_score"] == 1.0
+
+
+def test_not_scored_objects_never_appear_as_missed():
+    """Requirement: not_scored objects never appear as missed."""
+    objects = [
+        # 2 visible objects
+        {
+            "id": "vis_1",
+            "true_class": "multirotor",
+            "true_threat_level": 2,
+            "behaviour_label": "suspicious",
+            "start_position": [0.0, 1000.0, 150.0],
+            "velocity": [0.0, 0.0, 0.0],
+            "appears_at_time": 0.0,
+        },
+        {
+            "id": "vis_2",
+            "true_class": "bird",
+            "true_threat_level": 0,
+            "behaviour_label": "benign",
+            "start_position": [50.0, 1200.0, 200.0],
+            "velocity": [0.0, 0.0, 0.0],
+            "appears_at_time": 0.0,
+        },
+        # 3 never visible objects (behind camera y = -300)
+        {
+            "id": "invis_1",
+            "true_class": "multirotor",
+            "true_threat_level": 2,
+            "behaviour_label": "suspicious",
+            "start_position": [0.0, -300.0, 150.0],
+            "velocity": [0.0, 0.0, 0.0],
+            "appears_at_time": 0.0,
+        },
+        {
+            "id": "invis_2",
+            "true_class": "fixed_wing_uav",
+            "true_threat_level": 3,
+            "behaviour_label": "hostile",
+            "start_position": [0.0, -600.0, 150.0],
+            "velocity": [0.0, 0.0, 0.0],
+            "appears_at_time": 0.0,
+        },
+        {
+            "id": "invis_3",
+            "true_class": "unknown",
+            "true_threat_level": 1,
+            "behaviour_label": "benign",
+            "start_position": [0.0, -900.0, 150.0],
+            "velocity": [0.0, 0.0, 0.0],
+            "appears_at_time": 0.0,
+        },
+    ]
+
+    scenario = {
+        "scenario_id": "test_not_scored_disjoint_missed",
+        "cell": ["day", "clear", "open", "EO", "none", "none"],
+        "factors": {"time_of_day": "day", "terrain": "open", "distractors": "none"},
+        "objects": objects,
+        "duration_s": 60.0,
+        "difficulty_index": 0.5,
+        "noise_windows": 5,
+        "fingerprint": "fake_fp",
+    }
+
+    # Case A: Trainee misses everything (no detections)
+    result_miss_all = score_session(scenario=scenario, events=[], false_alarms=0)
+    assert set(result_miss_all["not_scored"]) == {"invis_1", "invis_2", "invis_3"}
+    assert set(result_miss_all["missed_objects"]) == {"vis_1", "vis_2"}
+    assert set(result_miss_all["not_scored"]).isdisjoint(set(result_miss_all["missed_objects"]))
+
+    # Case B: Trainee flags 1 visible object, misses 1 visible object
+    events_partial = [
+        {
+            "object_id": "vis_1",
+            "detected": True,
+            "detect_time_s": 4.0,
+            "classified_as": "multirotor",
+            "threat_level_rated": 2,
+            "response_chosen": "alert_unit",
+            "confidence": 0.9,
+        }
+    ]
+    result_partial = score_session(scenario=scenario, events=events_partial, false_alarms=0)
+    assert set(result_partial["not_scored"]) == {"invis_1", "invis_2", "invis_3"}
+    assert result_partial["missed_objects"] == ["vis_2"]
+    assert set(result_partial["not_scored"]).isdisjoint(set(result_partial["missed_objects"]))
+

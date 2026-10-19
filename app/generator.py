@@ -23,6 +23,7 @@ from app.factors import (
     ALTITUDE_BAND,
     BEARING_SECTOR,
     BEHAVIOUR_LABEL,
+    get_horizon_fraction,
 )
 from app.db import get_seen_cells
 from app.sensor_view import check_main_view_visibility
@@ -189,7 +190,17 @@ def _build_scenario_for_cell(
     duration_s = float(rng.choice([45.0, 60.0, 90.0, 120.0]))
 
     # Generate objects
+    W = 1920.0
+    H = 1080.0
+    horizon_frac = get_horizon_fraction(terrain, time_of_day)
+    min_x = W * 0.10 + 20.0
+    max_x = W * 0.90 - 20.0
+    min_y = H * 0.08 + 20.0
+    max_y = H * (horizon_frac - 0.04) - 20.0
+
+    placed_points: List[Tuple[float, float]] = []
     objects: List[Dict[str, Any]] = []
+
     for i in range(num_objects):
         obj_id = f"obj_{i + 1}"
         true_class = rng.choice(CLASS_MIX)
@@ -203,69 +214,63 @@ def _build_scenario_for_cell(
         else:  # multirotor, fixed_wing_uav
             threat_level = 2 if behaviour == "benign" else 3
 
-        # Spatial position: Ensure objects map inside visible camera canvas for all terrains
-        if i == 0:
-            # Primary target starts well inside the forward viewing frustum
-            angle_jitter = rng.uniform(-18.0, 18.0)
-            rad = math.radians(angle_jitter)
-            dist = rng.uniform(1100.0, 2200.0)
-            start_x = dist * math.sin(rad)
-            start_y = dist * math.cos(rad)
-        else:
-            angle_jitter = rng.uniform(-15.0, 15.0)
-            deg = base_deg + angle_jitter
-            rad = math.radians(deg)
-            dist = rng.uniform(1000.0, 2800.0)
-            start_y = max(400.0, dist * abs(math.cos(rad)))
-            start_x = dist * math.sin(rad) * 0.5
+        # Spread swarm members across sky rectangle with min spacing 40 px
+        chosen_point = None
+        for _ in range(50):
+            cand_x = rng.uniform(min_x, max_x)
+            cand_y = rng.uniform(min_y, max_y)
+            if all(math.hypot(cand_x - px, cand_y - py) >= 40.0 for px, py in placed_points):
+                chosen_point = (cand_x, cand_y)
+                break
 
-        # Altitude band tailored to terrain clearance so targets are above ground & skyline
-        if alt_band == "low":
-            if terrain == "urban":
-                start_z = rng.uniform(130.0, 240.0)
-            elif terrain == "hills":
-                start_z = rng.uniform(100.0, 200.0)
-            elif terrain == "forest":
-                start_z = rng.uniform(90.0, 180.0)
-            else:
-                start_z = rng.uniform(60.0, 140.0)
-        elif alt_band == "med":
-            start_z = rng.uniform(220.0, 500.0)
-        else:
-            start_z = rng.uniform(500.0, 1500.0)
+        if chosen_point is None:
+            # If no more space with 40px spacing, cap objects
+            if len(objects) >= 1:
+                break
+            chosen_point = (W / 2.0, (min_y + max_y) / 2.0)
+
+        placed_points.append(chosen_point)
+        scr_x, scr_y = chosen_point
+
+        # Map screen position to 3D telemetry
+        dist = rng.uniform(900.0, 2000.0)
+        fov_scale = (W * 0.75) / dist
+        start_x = (scr_x - W / 2.0) / fov_scale
+        start_z = (H * horizon_frac - scr_y) / (fov_scale * 1.05)
+        start_y = math.sqrt(max(200.0, dist**2 - start_x**2))
 
         # Speed band (m/s)
         if spd_band == "low":
-            spd = rng.uniform(5.0, 15.0)
+            spd = rng.uniform(4.0, 10.0)
         elif spd_band == "med":
-            spd = rng.uniform(15.0, 35.0)
+            spd = rng.uniform(10.0, 20.0)
         else:
-            spd = rng.uniform(35.0, 60.0)
+            spd = rng.uniform(20.0, 32.0)
 
         # Velocity components ensuring targets traverse or stay within forward view
+        rad = math.atan2(start_x, start_y)
         if motion in ("straight", "converging"):
-            vx = -math.sin(rad) * spd * 0.5
-            vy = -spd * 0.4
-            vz = rng.uniform(-0.1, 0.1)
+            vx = -math.sin(rad) * spd * 0.25
+            vy = -spd * 0.25
+            vz = rng.uniform(-0.02, 0.02)
         elif motion == "loiter":
-            vx = -math.cos(rad) * spd * 0.3
-            vy = math.sin(rad) * spd * 0.3
+            vx = -math.cos(rad) * spd * 0.15
+            vy = math.sin(rad) * spd * 0.15
             vz = 0.0
         elif motion == "parallel":
-            vx = math.copysign(spd * 0.7, -start_x if abs(start_x) > 10 else 1.0)
-            vy = rng.uniform(-1.0, 1.0)
-            vz = rng.uniform(-0.1, 0.1)
+            vx = math.copysign(spd * 0.35, -start_x if abs(start_x) > 10 else 1.0)
+            vy = rng.uniform(-0.3, 0.3)
+            vz = rng.uniform(-0.02, 0.02)
         else:  # erratic
-            vx = rng.uniform(-spd * 0.4, spd * 0.4)
-            vy = -abs(rng.uniform(spd * 0.1, spd * 0.3))
-            vz = rng.uniform(-0.2, 0.2)
+            vx = rng.uniform(-spd * 0.15, spd * 0.15)
+            vy = -abs(rng.uniform(spd * 0.05, spd * 0.2))
+            vz = rng.uniform(-0.05, 0.05)
 
         # Appear time strictly falls inside duration_s with adequate remaining time
-        # Requirement: Every scenario must have a visible, clickable object within first 5 seconds
         if i == 0:
-            appears_at = rng.uniform(0.0, 1.5)
+            appears_at = rng.uniform(0.0, 1.0)
         else:
-            appears_at = rng.uniform(0.0, max(1.0, min(15.0, duration_s - 15.0)))
+            appears_at = rng.uniform(0.0, max(1.0, min(8.0, duration_s - 15.0)))
 
         objects.append(
             {
@@ -276,6 +281,7 @@ def _build_scenario_for_cell(
                 "start_position": [round(start_x, 2), round(start_y, 2), round(start_z, 2)],
                 "velocity": [round(vx, 2), round(vy, 2), round(vz, 2)],
                 "appears_at_time": round(appears_at, 2),
+                "motion_pattern": motion,
             }
         )
 
@@ -308,20 +314,20 @@ def generate_for_cell(
 ) -> Dict[str, Any]:
     """Target a specific condition cell and generate a scenario.
     
-    Enforces validity rule: scenario must have at least one object on-screen and visible
-    in the MAIN view for at least 6 consecutive seconds.
-    If not, regenerates up to 20 tries, then relaxes degradation level.
+    Enforces validity rule: each object in scenario must be visible for at least
+    4 consecutive seconds inside the safe sky rectangle, with >= 40 px spacing.
+    If not, regenerates up to 25 tries, then relaxes degradation level.
     """
     rng_inst = _coerce_rng(rng)
     cell_tuple = tuple(cell)
 
-    # 1. Try up to 20 times with original cell
-    for _ in range(20):
+    # 1. Try up to 25 times with original cell
+    for _ in range(25):
         scenario = _build_scenario_for_cell(cell_tuple, rng_inst, object_count=object_count)
-        if check_main_view_visibility(scenario, min_consecutive_s=6.0):
+        if check_main_view_visibility(scenario, min_consecutive_s=4.0, require_all=True):
             return scenario
 
-    # 2. Relax degradation level if not valid after 20 tries
+    # 2. Relax degradation level if not valid after 25 tries
     degradation_order = ["occlusion", "dropout", "lag", "noise", "none"]
     curr_deg = cell_tuple[4] if len(cell_tuple) > 4 else "none"
 
@@ -342,9 +348,9 @@ def generate_for_cell(
                 if matching_held_out:
                     candidate_tuple = matching_held_out[0]
 
-            for _ in range(5):
+            for _ in range(10):
                 scenario = _build_scenario_for_cell(candidate_tuple, rng_inst, object_count=object_count)
-                if check_main_view_visibility(scenario, min_consecutive_s=6.0):
+                if check_main_view_visibility(scenario, min_consecutive_s=4.0, require_all=True):
                     return scenario
 
     # 3. Fallback nominal

@@ -42,7 +42,7 @@ from app.selector import select_next
 from app.generalization import generalization_score, rote_indicator
 from app.telemetry import SimulatedSource, TelemetryAdapter
 from app.recorder import record_telemetry, get_telemetry
-from app.sensor_view import visibility_windows
+from app.sensor_view import visibility_windows, get_scored_and_unscored_objects
 from app.scripted import (
     load_scripted_scenarios,
     get_scripted_scenario,
@@ -617,6 +617,8 @@ def get_after_action_review(session_id: str) -> Dict[str, Any]:
             false_alarm_count += int(payload.get("count", 0))
 
     vis_windows = visibility_windows(scenario)
+    scored_objects, not_scored_ids = get_scored_and_unscored_objects(scenario, min_visible_s=3.0)
+    scored_id_set = {str(obj["id"]) for obj in scored_objects}
 
     # 1. Timeline & Ground Truth compilation
     timeline = []
@@ -635,7 +637,7 @@ def get_after_action_review(session_id: str) -> Dict[str, Any]:
     correctness_flags = []
 
     for obj in objects:
-        oid = obj["id"]
+        oid = str(obj["id"])
         true_cls = obj.get("true_class", "unknown")
         beh = obj.get("behaviour_label", "benign")
         true_threat = obj.get("true_threat_level", 1)
@@ -659,7 +661,8 @@ def get_after_action_review(session_id: str) -> Dict[str, Any]:
 
         trainee_ev = trainee_events_by_id.get(oid)
         if not trainee_ev or not trainee_ev.get("detected", False):
-            errors["missed"].append(oid)
+            if oid in scored_id_set:
+                errors["missed"].append(oid)
             trainee_act = {
                 "object_id": oid,
                 "detected": False,
@@ -769,10 +772,13 @@ def get_after_action_review(session_id: str) -> Dict[str, Any]:
     time_of_day = scenario.get("factors", {}).get("time_of_day", "day")
     degradation = scenario.get("factors", {}).get("degradation", "none")
 
+    deg_str = "no sensor degradation" if degradation == "none" else f"{degradation} sensor degradation"
+
     if errors["missed"]:
         n_miss = len(errors["missed"])
+        n_scored = len(scored_objects)
         feedback_sentences.append(
-            f"{n_miss} of {len(objects)} target(s) were missed entirely under {time_of_day}/{weather} conditions ({degradation} degradation)."
+            f"{n_miss} of {n_scored} target(s) were missed entirely under {time_of_day}, {weather} and {deg_str}."
         )
 
     if errors["misclassifications"]:
@@ -788,7 +794,7 @@ def get_after_action_review(session_id: str) -> Dict[str, Any]:
 
     if errors["suboptimal_responses"]:
         feedback_sentences.append(
-            f"{len(errors['suboptimal_responses'])} target(s) received non-standard response choices according to SOP decision rules."
+            f"{len(errors['suboptimal_responses'])} target(s) received non-standard response choices according to the decision rules."
         )
 
     if false_alarm_count > 0:
@@ -807,6 +813,8 @@ def get_after_action_review(session_id: str) -> Dict[str, Any]:
         "ground_truth": ground_truth,
         "sensor_view": vis_windows,
         "visibility_windows": vis_windows,
+        "not_scored": not_scored_ids,
+        "scored_objects": [obj["id"] for obj in scored_objects],
         "trainee_actions": trainee_actions,
         "timeline": timeline,
         "errors": errors,

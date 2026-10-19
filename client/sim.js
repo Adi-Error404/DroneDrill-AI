@@ -276,21 +276,27 @@
   /**
    * Hit detection in secondary panels (EO, Thermal, Radar).
    */
-  function hitTestPanel(panelType, clickX, clickY, width, height, activeObjects, simTime, visibilityWindows, selectedObjectId = null) {
+  function hitTestPanel(panelType, clickX, clickY, width, height, activeObjects, simTime, visibilityWindows, selectedObjectId = null, factors = null) {
     const hitRadius = 35;
 
     // Check exact rendered screen objects from FeedsRenderer if available
     if (panelType === 'eo' && window.feedsRenderer && window.feedsRenderer.screenObjectsEO) {
       for (let scr of window.feedsRenderer.screenObjectsEO) {
         if (Math.hypot(clickX - scr.scrX, clickY - scr.scrY) <= hitRadius) {
-          return activeObjects.find(o => o.id === scr.id) || scr;
+          const matched = activeObjects.find(o => o.id === scr.id) || scr;
+          if (!window.isVisibleInMainView || window.isVisibleInMainView(matched, simTime, factors, visibilityWindows)) {
+            return matched;
+          }
         }
       }
     }
     if (panelType === 'thermal' && window.feedsRenderer && window.feedsRenderer.screenObjectsThermal) {
       for (let scr of window.feedsRenderer.screenObjectsThermal) {
         if (Math.hypot(clickX - scr.scrX, clickY - scr.scrY) <= hitRadius) {
-          return activeObjects.find(o => o.id === scr.id) || scr;
+          const matched = activeObjects.find(o => o.id === scr.id) || scr;
+          if (!window.isVisibleInMainView || window.isVisibleInMainView(matched, simTime, factors, visibilityWindows)) {
+            return matched;
+          }
         }
       }
     }
@@ -309,12 +315,20 @@
       const cy = height / 2;
       const d = Math.hypot(clickX - cx, clickY - cy);
       if (d <= hitRadius * 1.5) {
-        return flaggedObj;
+        if (!window.isVisibleInMainView || window.isVisibleInMainView(flaggedObj, simTime, factors, visibilityWindows)) {
+          return flaggedObj;
+        }
       }
     }
 
     for (let i = 0; i < activeObjects.length; i++) {
       const obj = activeObjects[i];
+
+      // Objects not visible anywhere must not be clickable
+      if (window.isVisibleInMainView && !window.isVisibleInMainView(obj, simTime, factors, visibilityWindows)) {
+        continue;
+      }
+
       let scrX = null;
       let scrY = null;
       let isVisible = true;
@@ -324,29 +338,17 @@
         const baseHorizon = height * 0.65;
         const altOffset = (obj.alt_m / 600) * (height * 0.4);
         scrY = Math.max(10, Math.min(height - 10, baseHorizon - altOffset));
-
-        if (visibilityWindows && visibilityWindows[obj.id]) {
-          const wins = visibilityWindows[obj.id];
-          for (let w of wins) {
-            if (simTime >= w.from_t && simTime <= w.to_t) {
-              isVisible = !!w.visible;
-              break;
-            }
-          }
-        }
       } else if (panelType === 'radar') {
         const cx = width / 2;
         const cy = height / 2;
         scrX = cx + (obj.x_m / 3000) * (width * 0.42);
         scrY = cy - (obj.y_m / 3000) * (height * 0.42);
-        isVisible = true;
       } else if (panelType === 'radar-widget') {
         const cx = width / 2;
         const cy = height / 2;
         const r = Math.min(cx, cy) - 6;
         scrX = cx + (obj.x_m / 3000) * r;
         scrY = cy - (obj.y_m / 3000) * r;
-        isVisible = true;
       }
 
       if (scrX !== null && scrY !== null && isVisible) {

@@ -262,6 +262,59 @@
   }
 
   /**
+   * One source of truth for whether an object is visible in the main view at simTime.
+   * Uses the same projection and rules as server-side sensor_view.py:
+   * inside the safe sky rectangle, not behind camera, distance <= 3000m,
+   * not occluded, not in dropout, and simTime >= appears_at_time.
+   */
+  function isVisibleInMainView(obj, simTime, factors = {}, visibilityWindows = {}, W = 1920, H = 1080) {
+    if (!obj) return false;
+
+    const appearsAt = (obj.appears_at_time !== undefined) ? Number(obj.appears_at_time) : 0.0;
+    if (simTime < appearsAt) return false;
+
+    const x_m = (obj.x_m !== undefined) ? Number(obj.x_m) : (obj.start_position ? Number(obj.start_position[0]) : 0);
+    const y_m = (obj.y_m !== undefined) ? Number(obj.y_m) : (obj.start_position ? Number(obj.start_position[1]) : 1000);
+    const alt_m = (obj.alt_m !== undefined) ? Number(obj.alt_m) : (obj.start_position ? Number(obj.start_position[2]) : 120);
+
+    // In front of camera: y_m must be strictly positive
+    if (y_m <= 0) return false;
+
+    const distanceM = Math.hypot(x_m, y_m);
+    if (distanceM > 3000) return false; // Beyond sensor range
+
+    const terrain = factors.terrain || 'open';
+    const tod = factors.time_of_day || 'day';
+    const horizonFrac = getHorizonFraction(terrain, tod);
+
+    const minX = W * 0.10;
+    const maxX = W * 0.90;
+    const minY = H * 0.08;
+    const maxY = H * (horizonFrac - 0.04);
+
+    const fovScale = (W * 0.75) / Math.max(60, distanceM);
+    const rawX = W / 2 + x_m * fovScale;
+    const rawY = (H * horizonFrac) - (alt_m * fovScale * 1.05);
+
+    const isInside = (rawX >= minX && rawX <= maxX && rawY >= minY && rawY <= maxY);
+    if (!isInside) return false;
+
+    // Check visibility windows for degradation blackouts (occlusion, dropout)
+    const wins = (visibilityWindows && visibilityWindows[obj.id]) || obj.sensor_visibility || obj.visibility_windows;
+    if (wins && Array.isArray(wins)) {
+      for (let i = 0; i < wins.length; i++) {
+        const w = wins[i];
+        if (simTime >= w.from_t && simTime <= w.to_t) {
+          if (!w.visible) return false;
+          break;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  /**
    * Project 3D telemetry into the Safe Sky Rectangle:
    * Objects live in the SKY only: y between 8% of the height and (horizon - 4%), x between 10% and 90% of the width.
    * If an object would leave the rectangle, fade it out over 1 s instead of drawing it at the edge.
@@ -310,9 +363,9 @@
       }
     }
 
-    // Clamp coordinates so it never sits beyond border during fade
-    const scrX = Math.max(minX, Math.min(maxX, rawX));
-    const scrY = Math.max(minY, Math.min(maxY, rawY));
+    // Clean un-clamped screen coordinates inside safe sky rectangle
+    const scrX = rawX;
+    const scrY = rawY;
 
     // Minimum on-screen size 16 px (silhouettes scale 0.7–1.4 with distance)
     const distNorm = Math.max(0.0, Math.min(1.0, (distanceM - 300) / 2200));
@@ -620,14 +673,9 @@
     const visibleScreenObjects = [];
 
     activeObjects.forEach(obj => {
-      // Check visibility window for occlusion degradation
-      if (degradation === 'occlusion' && state.visibilityWindows && state.visibilityWindows[obj.id]) {
-        const wins = state.visibilityWindows[obj.id];
-        for (let w of wins) {
-          if (simTime >= w.from_t && simTime <= w.to_t && !w.visible) {
-            return; // Object hidden during occluded interval
-          }
-        }
+      // One source of truth for visibility in main view
+      if (!isVisibleInMainView(obj, simTime, factors, state.visibilityWindows, W, H)) {
+        return;
       }
 
       const proj = projectObjectSafeSky(obj, W, H, horizonFrac, simTime, trailState);
@@ -755,8 +803,10 @@
     getHorizonFraction,
     getStaticBackgroundCanvas,
     projectObjectSafeSky,
+    isVisibleInMainView,
     renderFrame,
   };
   window.renderFrame = renderFrame;
+  window.isVisibleInMainView = isVisibleInMainView;
 
 })(window);
