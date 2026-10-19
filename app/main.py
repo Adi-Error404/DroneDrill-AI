@@ -805,11 +805,39 @@ def get_after_action_review(session_id: str) -> Dict[str, Any]:
     if not feedback_sentences:
         feedback_sentences.append("Exemplary performance: Zero detection, classification, or procedural errors.")
 
+    # Look for previous completed session for the trainee
+    trainee_sessions = get_trainee_sessions(session["trainee_id"])
+    prev_session = None
+    for idx_s, s in enumerate(trainee_sessions):
+        if s.get("session_id") == session_id:
+            if idx_s > 0:
+                prev_session = trainee_sessions[idx_s - 1]
+            break
+
+    scores_data = session.get("scores") or {}
+    prev_scores_data = (prev_session.get("scores") or {}) if prev_session else {}
+    deltas = {}
+    for skill_name in ["overall", "detection", "classification", "decision", "timeliness", "calibration"]:
+        cur_v = scores_data.get(f"{skill_name}_score") if skill_name != "overall" else scores_data.get("overall", session.get("overall_score"))
+        prv_v = prev_scores_data.get(f"{skill_name}_score") if skill_name != "overall" else prev_scores_data.get("overall", prev_session.get("overall_score") if prev_session else None)
+        if cur_v is not None and prv_v is not None:
+            deltas[skill_name] = round((float(cur_v) - float(prv_v)) * 100, 1)
+        else:
+            deltas[skill_name] = None
+
     return {
         "session_id": session_id,
         "trainee_id": session["trainee_id"],
         "scenario_id": scenario["scenario_id"],
+        "scenario_title": scenario.get("title") or scenario.get("scenario_id", ""),
+        "mode": session.get("mode", "practice"),
+        "date": session.get("started_at"),
+        "difficulty_index": scenario.get("difficulty_index", session.get("difficulty_index", 0.5)),
+        "factors": scenario.get("factors") or {},
         "overall_score": session.get("overall_score"),
+        "scores": scores_data,
+        "deltas": deltas,
+        "previous_scores": prev_scores_data,
         "ground_truth": ground_truth,
         "sensor_view": vis_windows,
         "visibility_windows": vis_windows,

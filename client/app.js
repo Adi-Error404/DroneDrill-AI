@@ -965,45 +965,35 @@
       return;
     }
 
+    const modalAAR = document.getElementById('modal-aar');
+    const modalBody = document.getElementById('aar-modal-body');
+    if (modalAAR) modalAAR.classList.add('active');
+
     try {
-      showLoading(true);
+      if (window.DroneDrillAAR && modalBody) {
+        window.DroneDrillAAR.renderLoading(modalBody);
+      }
       const res = await fetch(`${state.apiBase}/aar/${targetSessionId}`);
       if (!res.ok) throw new Error(await res.text());
       const aar = await res.json();
 
-      const modalBody = document.getElementById('aar-modal-body');
-      if (modalBody) {
-        modalBody.innerHTML = `
-          <div style="background: var(--panel-2); padding: 14px; border-radius: 8px; border: 1px solid var(--border);">
-            <div style="font-size: 13px; font-weight: 700; color: var(--blue); margin-bottom: 4px;">Pedagogical Feedback</div>
-            <ul style="font-size: 12px; color: var(--text); padding-left: 18px; line-height: 1.6;">
-              ${(aar.feedback_sentences || []).map(s => `<li>${s}</li>`).join('')}
-            </ul>
-          </div>
-
-          <div style="background: var(--panel-2); padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 12px; margin-top: 10px;">
-            <strong>Confidence Calibration:</strong> ${aar.confidence_vs_correctness || 'Normal'}
-          </div>
-
-          <div style="font-size: 13px; font-weight: 700; margin-top: 12px; margin-bottom: 6px;">Target Engagement Timeline</div>
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${(aar.timeline || []).map((t, idx) => `
-              <div style="background: var(--panel-2); border: 1px solid var(--border); padding: 10px; border-radius: 8px; font-size: 11px;">
-                <div style="font-weight: 700; color: var(--text); margin-bottom: 4px;">Contact ${idx + 1} (${t.object_id})</div>
-                <div>Ground Truth: ${t.ground_truth.true_class} (Threat ${t.ground_truth.true_threat_level}) - Expected: ${t.ground_truth.expected_response}</div>
-                <div>Trainee Action: ${t.trainee_action && t.trainee_action.detected ? `Classified: ${t.trainee_action.classified_as}, Response: ${t.trainee_action.response_chosen}` : '<span style="color: var(--red);">Missed Target</span>'}</div>
-              </div>
-            `).join('')}
-          </div>
-        `;
+      if (window.DroneDrillAAR && modalBody) {
+        window.DroneDrillAAR.renderAAR(modalBody, aar, {
+          isModal: true,
+          onCloseModal: () => closeModals(),
+          onNextScenario: () => {
+            closeModals();
+            startAdaptiveSession();
+          },
+          onOpenFullPage: (sid) => {
+            window.location.href = `aar.html?session=${encodeURIComponent(sid)}`;
+          },
+        });
       }
-
-      const modalAAR = document.getElementById('modal-aar');
-      if (modalAAR) modalAAR.classList.add('active');
     } catch (e) {
-      alert(`Error loading AAR: ${e.message}`);
-    } finally {
-      showLoading(false);
+      if (window.DroneDrillAAR && modalBody) {
+        window.DroneDrillAAR.renderError(modalBody, e.message, () => openAARModal(targetSessionId));
+      }
     }
   }
 

@@ -363,47 +363,15 @@
     </div>
   </footer>
 
-  <!-- Modal: Session Results -->
+  <!-- Modal: Session Results (Shared Unified AAR Renderer) -->
   <div class="modal-overlay" id="modal-results">
-    <div class="modal-dialog">
+    <div class="modal-dialog" style="max-width: 960px; width: 95%; max-height: 90vh;">
       <div class="modal-header">
-        <h3 class="modal-title">Scenario Evaluation Results</h3>
+        <h3 class="modal-title">After Action Review & Scenario Evaluation</h3>
         <button class="btn-close-modal" id="btn-close-results">&times;</button>
       </div>
-      <div class="modal-body">
-        <div id="results-error-msg" class="results-error-box"></div>
-        
-        <div class="results-score-hero">
-          <span class="results-score-hero-val" id="result-overall-score">--%</span>
-          <span class="results-score-hero-lbl">Overall Performance</span>
-        </div>
-
-        <div class="results-skills-grid">
-          <div class="results-skill-item">
-            <span class="results-skill-item-lbl">Detection</span>
-            <span class="results-skill-item-val" id="skill-val-detection">--</span>
-          </div>
-          <div class="results-skill-item">
-            <span class="results-skill-item-lbl">Classify</span>
-            <span class="results-skill-item-val" id="skill-val-classification">--</span>
-          </div>
-          <div class="results-skill-item">
-            <span class="results-skill-item-lbl">Decision</span>
-            <span class="results-skill-item-val" id="skill-val-decision">--</span>
-          </div>
-          <div class="results-skill-item">
-            <span class="results-skill-item-lbl">Timeliness</span>
-            <span class="results-skill-item-val" id="skill-val-timeliness">--</span>
-          </div>
-          <div class="results-skill-item">
-            <span class="results-skill-item-lbl">Calibration</span>
-            <span class="results-skill-item-val" id="skill-val-calibration">--</span>
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-secondary" id="btn-modal-aar">Review Timeline (AAR)</button>
-        <button class="btn-primary" id="btn-modal-next">Next Adaptive Scenario</button>
+      <div class="modal-body" id="results-modal-body" style="max-height: calc(90vh - 60px);">
+        <!-- Populated dynamically by DroneDrillAAR.renderAAR -->
       </div>
     </div>
   </div>
@@ -425,12 +393,12 @@
 
   <!-- Modal: After Action Review (AAR) -->
   <div class="modal-overlay" id="modal-aar">
-    <div class="modal-dialog" style="max-width: 780px;">
+    <div class="modal-dialog" style="max-width: 960px; width: 95%; max-height: 90vh;">
       <div class="modal-header">
         <h3 class="modal-title">After Action Review (AAR)</h3>
         <button class="btn-close-modal" id="btn-close-aar">&times;</button>
       </div>
-      <div class="modal-body" id="aar-modal-body">
+      <div class="modal-body" id="aar-modal-body" style="max-height: calc(90vh - 60px);">
         <!-- Populated from GET /aar/{session_id} -->
       </div>
     </div>
@@ -442,6 +410,7 @@
   <script src="renderer.js?v=skyready"></script>
   <script src="feeds_renderer.js?v=skyready"></script>
   <script src="canvas_renderer.js?v=skyready"></script>
+  <script src="aar_renderer.js?v=skyready"></script>
   <script src="sim.js?v=skyready"></script>
   <script src="app.js?v=skyready"></script>
 </body>

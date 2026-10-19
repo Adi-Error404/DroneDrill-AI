@@ -67,50 +67,67 @@
   }
 
   /**
-   * Display evaluation results or request error inside the score popup modal (not alert).
+   * Display evaluation results or request error inside the score popup modal (uses unified DroneDrillAAR renderer).
    */
-  function showResultsModal(resultData, errorMsg) {
+  async function showResultsModal(resultData, errorMsg) {
     const modal = document.getElementById('modal-results');
-    const errorEl = document.getElementById('results-error-msg');
-    const overallEl = document.getElementById('result-overall-score');
-    const detEl = document.getElementById('skill-val-detection');
-    const clsEl = document.getElementById('skill-val-classification');
-    const decEl = document.getElementById('skill-val-decision');
-    const timeEl = document.getElementById('skill-val-timeliness');
-    const calEl = document.getElementById('skill-val-calibration');
+    const bodyEl = document.getElementById('results-modal-body') || (modal ? modal.querySelector('.modal-body') : null);
+
+    if (modal) modal.classList.add('active');
 
     if (errorMsg) {
-      if (errorEl) {
-        let displayMsg = errorMsg;
-        try {
-          const parsed = typeof errorMsg === 'string' ? JSON.parse(errorMsg) : errorMsg;
-          displayMsg = parsed.detail || parsed.error || parsed.message || errorMsg;
-        } catch (_) {}
-        errorEl.textContent = `Request Failed: ${displayMsg}`;
-        errorEl.style.display = 'block';
+      if (window.DroneDrillAAR && bodyEl) {
+        window.DroneDrillAAR.renderError(bodyEl, errorMsg);
       }
-      if (overallEl) overallEl.textContent = '--%';
-      if (detEl) detEl.textContent = '--';
-      if (clsEl) clsEl.textContent = '--';
-      if (decEl) decEl.textContent = '--';
-      if (timeEl) timeEl.textContent = '--';
-      if (calEl) calEl.textContent = '--';
-    } else {
-      if (errorEl) {
-        errorEl.textContent = '';
-        errorEl.style.display = 'none';
-      }
-      const parsed = parseSessionResult(resultData);
-      if (overallEl) overallEl.textContent = formatPercent(parsed.overall);
-      if (detEl) detEl.textContent = formatPercent(parsed.detection);
-      if (clsEl) clsEl.textContent = formatPercent(parsed.classification);
-      if (decEl) decEl.textContent = formatPercent(parsed.decision);
-      if (timeEl) timeEl.textContent = formatPercent(parsed.timeliness);
-      if (calEl) calEl.textContent = formatPercent(parsed.calibration);
+      return;
     }
 
-    if (modal) {
-      modal.classList.add('active');
+    if (!bodyEl) return;
+
+    if (window.DroneDrillAAR) {
+      window.DroneDrillAAR.renderLoading(bodyEl);
+    }
+
+    const sessionId = (resultData && (resultData.session_id || resultData.sessionId)) || (window.state && window.state.activeSessionId);
+    let aarData = null;
+
+    if (sessionId) {
+      try {
+        const apiBase = (window.CONFIG && window.CONFIG.API_BASE) || 'http://127.0.0.1:8000';
+        const res = await fetch(`${apiBase}/aar/${sessionId}`);
+        if (res.ok) {
+          aarData = await res.json();
+        }
+      } catch (err) {
+        console.warn('Failed to fetch full AAR in modal:', err);
+      }
+    }
+
+    if (!aarData) {
+      aarData = {
+        session_id: sessionId || 'session',
+        overall_score: resultData ? (resultData.overall_score ?? resultData.overall) : 0,
+        scores: resultData || {},
+        feedback_sentences: [],
+        timeline: [],
+        errors: { missed: [], false_alarms: 0 },
+      };
+    }
+
+    if (window.DroneDrillAAR) {
+      window.DroneDrillAAR.renderAAR(bodyEl, aarData, {
+        isModal: true,
+        onCloseModal: () => {
+          if (modal) modal.classList.remove('active');
+        },
+        onNextScenario: () => {
+          if (modal) modal.classList.remove('active');
+          if (typeof window.startAdaptiveSession === 'function') window.startAdaptiveSession();
+        },
+        onOpenFullPage: (sid) => {
+          window.location.href = `aar.html?session=${encodeURIComponent(sid)}`;
+        },
+      });
     }
   }
 

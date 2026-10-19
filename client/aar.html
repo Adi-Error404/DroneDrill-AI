@@ -34,7 +34,7 @@
 
     <!-- Session Selector and Print Controls -->
     <div class="header-controls">
-      <select id="session-select" class="select-custom" style="min-width: 240px;">
+      <select id="session-select" class="session-select-dark select-custom" style="min-width: 280px;">
         <option value="">Select a completed session...</option>
       </select>
       <button class="btn-secondary" id="btn-print-aar" style="padding: 8px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
@@ -44,8 +44,8 @@
     </div>
   </header>
 
-  <!-- Main Grid Layout -->
-  <main class="main-layout" style="grid-template-columns: 240px 1fr;">
+  <!-- Main Grid Layout (Secondary View Full Width Without Empty Gutters) -->
+  <main class="secondary-layout">
 
     <!-- Left Sidebar -->
     <aside class="sidebar">
@@ -140,47 +140,11 @@
       </div>
     </aside>
 
-    <!-- Content Area -->
-    <div class="page-container">
-
-      <!-- Pedagogical Feedback & Calibration Banner -->
-      <div class="card-panel highlighted">
-        <div class="card-title">
-          <span>Diagnostic Feedback & Assessment Rules</span>
-          <span class="badge-adaptive" id="aar-badge-mode">Practice Mode</span>
-        </div>
-        <ul id="aar-feedback-list" style="font-size: 13px; color: var(--text-primary); padding-left: 20px; line-height: 1.6;">
-          <li>Select a session from the dropdown above to inspect detailed After Action Review data.</li>
-        </ul>
-        <div id="aar-calibration-note" style="background: rgba(255, 255, 255, 0.04); padding: 10px 14px; border-radius: var(--radius-sm); font-size: 12px; color: var(--text-secondary);">
-          <strong>Confidence Calibration:</strong> Evaluating judgment alignment...
-        </div>
+    <!-- Content Area (Uses Shared Unified Renderer) -->
+    <div class="page-container" id="aar-page-container">
+      <div style="padding: 60px 20px; text-align: center; color: var(--muted); font-size: 13px;">
+        Select a session from the dropdown above to inspect detailed After Action Review data.
       </div>
-
-      <!-- SVG Multi-Lane Timeline -->
-      <div class="card-panel">
-        <div class="card-title">
-          <span>Target Engagement Multi-Lane Timeline</span>
-          <span class="card-subtitle">Lanes: Ground Truth, Sensor Visibility, Trainee Response</span>
-        </div>
-        <div class="timeline-container">
-          <svg id="timeline-svg" class="timeline-svg" viewBox="0 0 1000 320">
-            <!-- Rendered dynamically by aar.js -->
-          </svg>
-        </div>
-      </div>
-
-      <!-- Detailed Error Taxonomy Breakdown -->
-      <div class="card-panel">
-        <div class="card-title">
-          <span>Error Taxonomy & Procedural Discrepancies</span>
-          <span class="card-subtitle">Misses, misclassifications, wrong threat levels, and procedural response variances</span>
-        </div>
-        <div class="error-list" id="aar-error-list">
-          <div style="font-size: 12px; color: var(--text-muted);">No errors recorded or session not yet loaded.</div>
-        </div>
-      </div>
-
     </div>
 
   </main>
@@ -197,7 +161,8 @@
   </footer>
 
   <!-- Load Scripts -->
-  <script src="config.js?v=sakshi"></script>
-  <script src="aar.js?v=sakshi"></script>
+  <script src="config.js?v=skyready"></script>
+  <script src="aar_renderer.js?v=skyready"></script>
+  <script src="aar.js?v=skyready"></script>
 </body>
 </html>
