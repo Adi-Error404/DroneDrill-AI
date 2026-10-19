@@ -10,4 +10,4 @@
 - [x] **PHASE 2 - ONE SOURCE OF TRUTH FOR VISIBILITY AND SCORING**: Done
 - [x] **PHASE 3 - AAR REDESIGN (modal & aar.html shared renderer)**: Done
 - [x] **PHASE 4 - FULLSCREEN SIMULATOR WITH ACTIONS ON THE RIGHT**: Done
-- [ ] **PHASE 5 - VERIFY (multi-resolution & scenarios verification)**: Not started
+- [x] **PHASE 5 - VERIFY (multi-resolution & scenarios verification)**: Done

@@ -197,8 +197,8 @@ def visibility_windows(scenario: Dict[str, Any]) -> Dict[str, List[Dict[str, Any
         # Precompute degradation blackout intervals
         masked_intervals = []
         if degradation == "occlusion":
-            occ_dur = round(rng.uniform(4.0, 7.0), 2)
-            occ_start = round(rng.uniform(appears_at + 3.0, max(appears_at + 3.1, appears_at + 15.0)), 2)
+            occ_dur = round(rng.uniform(3.0, 6.0), 2)
+            occ_start = round(rng.uniform(appears_at + 6.0, max(appears_at + 6.1, appears_at + 16.0)), 2)
             occ_end = round(min(duration_s - 1.0, occ_start + occ_dur), 2)
             if occ_end > occ_start:
                 masked_intervals.append((occ_start, occ_end, "Target masked by terrain or building occlusion"))

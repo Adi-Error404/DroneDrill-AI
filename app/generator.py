@@ -324,7 +324,7 @@ def generate_for_cell(
     # 1. Try up to 25 times with original cell
     for _ in range(25):
         scenario = _build_scenario_for_cell(cell_tuple, rng_inst, object_count=object_count)
-        if check_main_view_visibility(scenario, min_consecutive_s=4.0, require_all=True):
+        if check_main_view_visibility(scenario, min_consecutive_s=4.0, require_all=True) and check_main_view_visibility(scenario, min_consecutive_s=6.0, require_all=False):
             return scenario
 
     # 2. Relax degradation level if not valid after 25 tries
@@ -348,15 +348,19 @@ def generate_for_cell(
                 if matching_held_out:
                     candidate_tuple = matching_held_out[0]
 
-            for _ in range(10):
+            for _ in range(15):
                 scenario = _build_scenario_for_cell(candidate_tuple, rng_inst, object_count=object_count)
-                if check_main_view_visibility(scenario, min_consecutive_s=4.0, require_all=True):
+                if check_main_view_visibility(scenario, min_consecutive_s=4.0, require_all=True) and check_main_view_visibility(scenario, min_consecutive_s=6.0, require_all=False):
                     return scenario
 
     # 3. Fallback nominal
     fallback_cell = list(cell_tuple)
     fallback_cell[4] = "none"
-    return _build_scenario_for_cell(tuple(fallback_cell), rng_inst, object_count=object_count)
+    for _ in range(25):
+        scenario = _build_scenario_for_cell(tuple(fallback_cell), rng_inst, object_count=object_count)
+        if check_main_view_visibility(scenario, min_consecutive_s=6.0, require_all=False):
+            return scenario
+    return scenario
 
 
 def generate_scenario(

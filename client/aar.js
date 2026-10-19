@@ -119,4 +119,11 @@
     }
   }
 
+  // Legacy backward-compatible export for timeline rendering delegated to DroneDrillAAR
+  window.renderTimelineSVG = function (container, aar) {
+    if (window.DroneDrillAAR) {
+      window.DroneDrillAAR.renderAAR(container || document.getElementById('aar-page-container'), aar);
+    }
+  };
+
 })();
